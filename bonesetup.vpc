@@ -1,0 +1,26 @@
+//-----------------------------------------------------------------------------
+//	BONESETUP.VPC
+//
+//	Project Script
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		".."
+
+$include "$SRCDIR\vpc_scripts\source_lib_base.vpc"
+
+
+$Configuration
+{
+	$Compiler
+	{
+		$AdditionalIncludeDirectories	"$BASE;..\public"
+	}
+}
+
+$Project "bonesetup"
+{
+	$Folder	"Source Files"
+	{
+        $File   "bonesetup.cpp"
+	}
+}
