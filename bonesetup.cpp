@@ -226,6 +226,12 @@ CBoneCache *Studio_GetBoneCache( memhandle_t cacheHandle )
 	return g_StudioBoneCache.GetResource_NoLock( cacheHandle );
 }
 
+CBoneCache *Studio_GetBoneCache( memhandle_t cacheHandle, bool par2 )
+{
+	AUTO_LOCK( g_StudioBoneCache.AccessMutex() );
+	return g_StudioBoneCache.GetResource_NoLock( cacheHandle );
+}
+
 memhandle_t Studio_CreateBoneCache( bonecacheparams_t &params )
 {
 	AUTO_LOCK( g_StudioBoneCache.AccessMutex() );
@@ -2691,7 +2697,7 @@ bool Studio_SolveIK( mstudioikchain_t *pikchain, Vector &targetFoot, matrix3x4_t
 // Purpose: Solve Knee position for a known hip and foot location, but no specific knee direction preference
 //-----------------------------------------------------------------------------
 
-bool Studio_SolveIK( int iThigh, int iKnee, int iFoot, Vector &targetFoot, matrix3x4_t *pBoneToWorld )
+bool Studio_SolveIK( int iThigh, int iKnee, int iFoot, Vector &targetFoot, matrix3x4a_t *pBoneToWorld )
 {
 	Vector worldFoot, worldKnee, worldThigh;
 
@@ -2755,7 +2761,7 @@ void Studio_AlignIKMatrix( matrix3x4_t &mMat, const Vector &vAlignTo )
 // Purpose: Solve Knee position for a known hip and foot location, and a known knee direction
 //-----------------------------------------------------------------------------
 
-bool Studio_SolveIK( int iThigh, int iKnee, int iFoot, Vector &targetFoot, Vector &targetKneePos, Vector &targetKneeDir, matrix3x4_t *pBoneToWorld )
+bool Studio_SolveIK( int iThigh, int iKnee, int iFoot, Vector &targetFoot, Vector &targetKneePos, Vector &targetKneeDir, matrix3x4a_t *pBoneToWorld )
 {
 	Vector worldFoot, worldKnee, worldThigh;
 
@@ -4449,7 +4455,7 @@ void Studio_BuildMatrices(
 	const Quaternion q[],
 	int iBone,
 	float flScale,
-	matrix3x4_t bonetoworld[MAXSTUDIOBONES],
+	matrix3x4a_t bonetoworld[MAXSTUDIOBONES],
 	int boneMask
 	)
 {
@@ -5991,4 +5997,58 @@ void Studio_RunBoneFlexDrivers( float *pflFlexControllerWeights, const CStudioHd
 			}
 		}
 	}
+}
+
+float Studio_SeqMovementAndDuration( const CStudioHdr *pStudioHdr, int iSequence, float flCycleFrom, float flCycleTo, const float poseParameter[], Vector &deltaPos )
+{
+	mstudioanimdesc_t *panim[4];
+	float	weight[4];
+
+	mstudioseqdesc_t &seqdesc = ((CStudioHdr *)pStudioHdr)->pSeqdesc( iSequence );
+
+	Studio_SeqAnims( pStudioHdr, seqdesc, iSequence, poseParameter, panim, weight );
+
+	deltaPos.Init( );
+
+	Vector localPos;
+	QAngle localAngles;
+
+	float t = 0;
+	for ( int i = 0; i < 4; i++ )
+	{
+		if ( weight[i] == 0.0f )
+			continue;
+
+		if ( panim[i]->numframes > 1 )
+		{
+			t += ( panim[i]->fps / ( panim[i]->numframes - 1 ) ) * weight[i];
+		}
+
+		if ( Studio_AnimMovement( panim[i], flCycleFrom, flCycleTo, localPos, localAngles ) )
+		{
+			VectorMA( deltaPos, weight[i], localPos, deltaPos );
+		}
+	}
+	return ( t != 0.0f ) ? 1.0f / t : 0.0f;
+}
+
+void Studio_AlignIKMatrix( matrix3x4a_t& mMat, const Vector &vAlignTo )
+{
+	Vector tmp1, tmp2, tmp3;
+
+	// Column 0 (X) becomes the vector.
+	tmp1 = vAlignTo;
+	VectorNormalize( tmp1 );
+	MatrixSetColumn( tmp1, 0, mMat );
+
+	// Column 1 (Y) is the cross of the vector and column 2 (Z).
+	MatrixGetColumn( mMat, 2, tmp3 );
+	tmp2 = tmp3.Cross( tmp1 );
+	VectorNormalize( tmp2 );
+	// FIXME: check for X being too near to Z
+	MatrixSetColumn( tmp2, 1, mMat );
+
+	// Column 2 (Z) is the cross of columns 0 (X) and 1 (Y).
+	tmp3 = tmp1.Cross( tmp2 );
+	MatrixSetColumn( tmp3, 2, mMat );
 }
